@@ -1,18 +1,20 @@
 name: check-ss
 description: "file:///README.md"
-url: "https://github.com/genzj/check_ss"
-tags: ~
-vendor: Linux
-target: Proxy
-type: Plugin
-license: gplv3
-releases: 
+url: https://github.com/genzj/check_ss.git
+tags: shadowsocks
+vendor: linux
+target: proxy
+type: plugin
+license: GNU General Public License version 3.0
+releases:
   - 
-    name: 0.5
-    description: "0.5 Release"
-    files: 
+    name: v0.5
+    description: The first working version.
+    files:
       - 
-        name: check_ss
+        name: 'check_ss'
+        checksum: 16204B32A281C3E4E9BFE09482CCFD53
         url: "file:///check_ss"
-        description: "First release"
-        checksum: 16204b32a281c3e4e9bfe09482ccfd53
+        description: >
+          Shadowsocks Server Check for
+          Nagios/Icinga
