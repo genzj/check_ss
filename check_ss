@@ -1,0 +1,116 @@
+#!/bin/bash
+#
+# check_ss - Check if your ShadowSocks server is still working
+# Copyright (C) 2017  genzj (zj0512@gmail.com)
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
+HELP=false
+ONE_TIME_AUTH=false
+LOCAL_ADDRESS='127.0.0.1'
+PASSWORD=''
+LOCAL_PORT='1080'
+METHOD='aes-256-cfb'
+SERVER_PORT=''
+SERVER_ADDRESS=''
+SS_GO_PATH="$(dirname $0)/shadowsocks-local-linux64-1.1.5"
+TARGET='https://www.google.com'
+MAX_TIME=10
+
+SS_PID=''
+SS=''
+function start_ss {
+    # Usage: start_ss pid_var stdout_var 
+    coproc SS { "$SS_GO_PATH" -b "$LOCAL_ADDRESS" -k "$PASSWORD" -l "$LOCAL_PORT" -m "$METHOD" -p "$SERVER_PORT" -s "$SERVER_ADDRESS" 2>&1; }
+    #{ "$SS_GO_PATH" -b "$LOCAL_ADDRESS" -k "$PASSWORD" -l "$LOCAL_PORT" -m "$METHOD" -p "$SERVER_PORT" -s "$SERVER_ADDRESS" 2>&1; }&
+    printf -v "$1" "%d" "${SS_PID}"
+    printf -v "$2" "%d" "${SS[0]}"
+    [[ -n "${SS_PID}" ]] && trap cleanup EXIT
+}
+
+function cleanup {
+    local ssread
+    local ssworkerpid
+    [[ -n "$SSPID" ]] || return
+    ssworkerpid=$(ps --ppid $SSPID -o pid --no-headers)
+    kill $SSPID $ssworkerpid &>/dev/null
+    wait $SSPID &>/dev/null
+}
+
+OPTS=`getopt -o hAb:k:l:m:p:s: --long max-time:,ss-path:,target:,help -n 'check_ss' -- "$@"`
+
+if [[ $? != 0 ]] ; then
+    echo "UNKNOWN - Failed parsing options."
+    exit 3
+fi
+
+eval set -- "$OPTS"
+
+while true; do
+  case "$1" in
+    -A ) ONE_TIME_AUTH=true; shift ;;
+    -b ) LOCAL_ADDRESS="$2"; shift; shift ;;
+    -k ) PASSWORD="$2"; shift; shift ;;
+    -l ) LOCAL_PORT="$2"; shift; shift ;;
+    -m ) METHOD="$2"; shift; shift ;;
+    -p ) SERVER_PORT="$2"; shift; shift ;;
+    -s ) SERVER_ADDRESS="$2"; shift; shift ;;
+    --target ) TARGET="$2"; shift; shift ;;
+    --ss-path ) SS_GO_PATH="$2"; shift; shift ;;
+    --max-time ) MAX_TIME="$2"; shift; shift ;;
+    -h | --help )    HELP=true; shift ;;
+    -- ) shift; break ;;
+    * ) break ;;
+  esac
+done
+
+if [[ $HELP == 'true' ]] ; then
+    cat <<EOF
+check_ss - Check if your Shadowsocks server is still working.
+Copyright (c) 2017 genzj (zj0512@gmail.com)
+Usage:
+	--help   = Print this message
+EOF
+    exit 0
+elif [[ -z $LOCAL_PORT || -z $LOCAL_ADDRESS || -z $PASSWORD || -z $METHOD || -z $SERVER_PORT || -z $SERVER_ADDRESS || -z $TARGET ]] ; then
+    echo 'UNKNOWN - Missing required parameter(s).'
+    exit 3
+elif [[ ! -x "$SS_GO_PATH" ]] ; then
+    echo 'UNKNOWN - Shadowsocks client not executable.'
+    exit 3
+fi
+
+start_ss SSPID SSFD
+
+ts=$(date +%s%N)
+curl --max-time "${MAX_TIME}" -sf --socks5-hostname "${LOCAL_ADDRESS}:${LOCAL_PORT}" "${TARGET}" &>/dev/null
+ret=$?
+tt=$((($(date +%s%N) - $ts)/1000000))
+
+function read_ss_output {
+    while read -t 1 -u "${SSFD}" ssread &>/dev/null ; do
+        SSOUT="$SSOUT\n$ssread"
+    done
+    echo -e "$SSOUT"
+}
+
+#read_ss_output
+
+if [[ $ret -eq 0 ]] ; then
+    echo "OK - Latency ${tt}ms."
+    exit 0
+else
+    echo "CRITICAL - Proxy is down, curl returns $ret after ${tt}ms"
+    exit 1
+fi
